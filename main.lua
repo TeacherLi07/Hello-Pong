@@ -1,3 +1,4 @@
+---@diagnostic disable: lowercase-global
 Class = require "class"
 push = require "push"
 
@@ -49,18 +50,22 @@ function love.load()
     player1Score = 0
     player2Score = 0
 
+    combo = 0
+
+    winScore = 2
+
     winningPlayer = 0
 
     servingPlayer = math.random(2) == 1 and 1 or 2
     
-    paddle1 = Paddle(5, 20, 5, 20)
-    paddle2 = Paddle(VIRTUAL_WIDTH - 10, VIRTUAL_HEIGHT - 30, 5, 20)
+    paddle1 = Paddle(5, math.random(20,230), 5, 20)
+    paddle2 = Paddle(VIRTUAL_WIDTH - 10, math.random(20,230), 5, 20)
     ball = Ball(VIRTUAL_WIDTH / 2 - 2, VIRTUAL_HEIGHT / 2 - 2, 5, 5)
 
     --menu initialization
     gameState = 'menu'
     selectedItem = 1
-    playersConfig = 2
+    playersConfig = 1
 
     if servingPlayer == 1 then
         ball.dx = 100
@@ -87,33 +92,7 @@ end
 
 function love.update(dt)
 
-    if ball:collides(paddle1) then
-        ball.dx = -ball.dx*1.2
-        ball.x = paddle1.x + ball.width
-
-        sounds['paddle_hit']:play()
-    end
-
-    if ball:collides(paddle2) then
-        ball.dx = -ball.dx*1.2
-        ball.x = paddle2.x - ball.width
-
-        sounds['paddle_hit']:play()
-    end
-
-    if ball.y <= 0 then
-        ball.dy = -ball.dy
-        ball.y = 0
-
-        sounds['wall_hit']:play()
-    end
-    
-    if ball.y >= VIRTUAL_HEIGHT - 4 then
-        ball.dy = -ball.dy
-        ball.y = VIRTUAL_HEIGHT - 4
-
-        sounds['wall_hit']:play()
-    end
+    ballCollision()
 
     paddle1:update(dt)
     paddle2:update(dt)
@@ -128,50 +107,62 @@ function love.update(dt)
     end
 
     --player2 movement
-    if love.keyboard.isDown{'up'} then
+
+    if playersConfig == 2 then
+        if love.keyboard.isDown{'up'} then
         paddle2.dy = -PADDLE_SPEED
-    elseif love.keyboard.isDown{'down'} then
-        paddle2.dy = PADDLE_SPEED
-    else
-        paddle2.dy = 0
+        elseif love.keyboard.isDown{'down'} then
+            paddle2.dy = PADDLE_SPEED
+        else
+            paddle2.dy = 0
+        end
+    elseif playersConfig == 1 then
+        --AI--
+        if ball.dx > 0 then
+            local diff = ball.y - paddle2.y - paddle2.height / 2
+            paddle2.dy = diff * 10
+        else
+            paddle2.dy = 0
+        end
+
+        local maxSpeed = 180
+        if paddle2.dy > maxSpeed then paddle2.dy = maxSpeed end
+        if paddle2.dy < -maxSpeed then paddle2.dy = -maxSpeed end
     end
 
-    --计分
+    --score
     if gameState == "play" then
-            ball:update(dt)
-            if ball.x < 0 then
-                player2Score = player2Score + 1
-                ball:reset()
-                servingPlayer = 1
-                ball.dx = 100
+        ball:update(dt)
+        if ball.x < 0 then
+            player2Score = player2Score + 1
+            ball:reset()
+            servingPlayer = 1
+            ball.dx = 100
 
-                sounds['score']:play()
+            sounds['score']:play()
 
-                if player2Score == 5 then
-                    gameState = 'victory'
-                    winningPlayer = 2
-                else
-                    gameState = 'serve'
-                end
-
-            end
-
-            if ball.x > VIRTUAL_WIDTH - 4 then
-                player1Score = player1Score + 1
-                ball:reset()
-                servingPlayer = 2
-                ball.dx = -100
+            if player2Score == winScore then
+                gameState = 'victory'
+                winningPlayer = 2
+            else
                 gameState = 'serve'
-
-                sounds['score']:play()
-
-                if player1Score == 5 then
-                    gameState = 'victory'
-                    winningPlayer = 1
-                else
-                    gameState = 'serve'
-                end
             end
+        end
+
+        if ball.x > VIRTUAL_WIDTH - 4 then
+            player1Score = player1Score + 1
+            ball:reset()
+            servingPlayer = 2
+            ball.dx = -100
+            gameState = 'serve'
+            sounds['score']:play()
+            if player1Score == winScore then
+                gameState = 'victory'
+                winningPlayer = 1
+            else
+                gameState = 'serve'
+            end
+        end
     end
     
 end
@@ -198,7 +189,7 @@ function love.keypressed(key)
             if item == 'Players' then
                 gameState = 'submenu_players'
             elseif item == 'Win Score' then
-                -- win score
+                gameState = 'submenu_WinScore'
             elseif item == 'Free Mode' then
                 -- free mode
             elseif item == 'Particles' then
@@ -213,20 +204,45 @@ function love.keypressed(key)
         elseif key == "escape" then
             love.event.quit()
         end
+
     elseif gameState == 'submenu_players' then
         --submenu press
         if key == 'left' then
-            playersConfig = 1
+            playersConfig = playersConfig - 1
         elseif key == 'right' then
-            playersConfig = 2
-        elseif key == 'z' or key == 'escape' then
+            playersConfig = playersConfig + 1
+        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
             gameState = 'menu'
+        end
+
+        if playersConfig > 2 then
+            playersConfig = 1
+        elseif playersConfig < 1 then
+            playersConfig = 2
+        end
+    elseif gameState == 'submenu_WinScore' then
+        --submenu press
+        if key == 'left' then
+            winScore = winScore - 1
+        elseif key == 'right' then
+            winScore = winScore + 1
+        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
+            gameState = 'menu'
+        end
+        if winScore > 7 then
+            winScore = 1
+        elseif winScore < 1 then
+            winScore = 7
         end
     elseif gameState == 'serve' then
         if key == 'enter' or key == 'return' then
             gameState = 'play'
+            combo = 0
         elseif key == "escape" then
             gameState = 'menu'
+            player1Score = 0
+            player2Score = 0
+            combo = 0
         end
     elseif gameState == 'play' then
         if key == "escape" then
@@ -234,9 +250,10 @@ function love.keypressed(key)
         end
     elseif gameState == 'victory' then
         if key == 'enter' or key == 'return' then
-            gameState = 'start'
+            gameState = 'play'
             player1Score = 0
             player2Score = 0
+            combo = 0
         elseif key == "escape" then
             gameState = 'menu'
         end
@@ -252,6 +269,8 @@ function love.draw()
         drawMenu()
     elseif gameState == 'submenu_players' then
         drawPlayersSettings()
+    elseif gameState == 'submenu_WinScore' then
+        drawWinScore()
     elseif gameState == 'play' or gameState == 'serve' or gameState == 'victory' then
         drawGame()
     end
@@ -259,6 +278,44 @@ function love.draw()
     displayFPS()
 
     push:apply("end")
+end
+
+function ballCollision()
+
+    if ball:collides(paddle1) then
+        ball.dx = -ball.dx*1.2
+        ball.x = paddle1.x + ball.width
+        combo = combo + 1
+        sounds['paddle_hit']:play()
+    end
+
+    if ball:collides(paddle2) then
+        ball.dx = -ball.dx*1.2
+        ball.x = paddle2.x - ball.width
+        combo = combo + 1
+        sounds['paddle_hit']:play()
+    end
+
+    if ball.y <= 0 then
+        ball.dy = -ball.dy
+        ball.y = 0
+
+        sounds['wall_hit']:play()
+    end
+    
+    if ball.y >= VIRTUAL_HEIGHT - 4 then
+        ball.dy = -ball.dy
+        ball.y = VIRTUAL_HEIGHT - 4
+
+        sounds['wall_hit']:play()
+    end
+
+    local ballMaxSpeed = 800
+    if ball.dx > ballMaxSpeed then
+        ball.dx = ballMaxSpeed
+    elseif ball.dx < -ballMaxSpeed then
+        ball.dx = -ballMaxSpeed
+    end
 end
 
 function displayFPS()
@@ -326,6 +383,8 @@ end
 function drawGame()
     love.graphics.setFont(smallFont)
 
+    love.graphics.print('Combo: '..tostring(combo),360,30)
+
     if gameState == 'serve' then
         love.graphics.printf('Player'..tostring(servingPlayer).."'s turn!",0,20,VIRTUAL_WIDTH,'center')
         love.graphics.printf('Press Enter to Serve!',0,32,VIRTUAL_WIDTH,'center')
@@ -361,4 +420,19 @@ function drawPlayersSettings()
     love.graphics.setColor(1, 1, 1, 0.8)
     love.graphics.setFont(smallFont)
     love.graphics.printf("< Use <- -> to change and Z to confirm >", 0, VIRTUAL_HEIGHT - 40, VIRTUAL_WIDTH, "center")
+end
+
+function drawWinScore()
+    love.graphics.setColor(1,1,1,1)
+    love.graphics.setFont(instructFont)
+
+    love.graphics.printf("Set the Win Score", 0, 40, VIRTUAL_WIDTH, "center")
+
+    local text = "Win Scores : " .. tostring(winScore)
+    
+    love.graphics.printf(text, 0, 120, VIRTUAL_WIDTH, "center")
+
+    love.graphics.setColor(1, 1, 1, 0.8)
+    love.graphics.setFont(smallFont)
+    love.graphics.printf("< Use <- -> to adjust and Z to confirm >", 0, VIRTUAL_HEIGHT - 40, VIRTUAL_WIDTH, "center")
 end

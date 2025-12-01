@@ -28,8 +28,12 @@ function Ball:reset()
     self.x = VIRTUAL_WIDTH / 2 - 2
     self.y = VIRTUAL_HEIGHT / 2 - 2
 
-    self.dx = math.random(2) == 1 and -100 or 100
-    self.dy = math.random(-50, 50)
+    self.dx = math.random(2) == 1 and -150 or 150
+    if math.random() < 0.5 then
+        self.dy = math.random(-80, -20)
+    else
+        self.dy = math.random(20, 80)
+    end
 end
 
 function Ball:update(dt)
