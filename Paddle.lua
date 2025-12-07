@@ -8,10 +8,11 @@ function Paddle:init(x,y,width,height)
     self.dx = 0
     self.dy = 0
 
+
     self.isSprinting = false
     self.sprintTimer = 0
     self.sprintDuration = 0.3
-    
+
     self.cooldownTimer = 0
     self.cooldownMax = 3.0
 
@@ -93,9 +94,11 @@ function Paddle:spawnParticle()
 end
 
 function Paddle:render()
-    love.graphics.setColor(1, 1, 1, 1)
-    for _, p in ipairs(self.particles) do
-        love.graphics.rectangle('fill', p.x, p.y, p.size, p.size)
+    if particleSet == 1 then
+            love.graphics.setColor(1, 1, 1, 1)
+        for _, p in ipairs(self.particles) do
+            love.graphics.rectangle('fill', p.x, p.y, p.size, p.size)
+        end
     end
     love.graphics.setColor(1, 1, 1, 1)
 

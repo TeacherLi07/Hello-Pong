@@ -35,7 +35,6 @@ function love.load()
 
     titleFont = love.graphics.newFont("fonts/ari_w9500/ari-w9500-condensed-display.ttf", 32)
 
-
     scoreFont = love.graphics.newFont("fonts/font.ttf", 32)
 
     victoryFont = love.graphics.newFont("fonts/font.ttf", 24)
@@ -45,7 +44,10 @@ function love.load()
         ['score']=love.audio.newSource('sounds/score.wav','static'),
         ['wall_hit']=love.audio.newSource('sounds/wall_hit.wav','static'),
         ['dash']=love.audio.newSource('sounds/dash.wav','static'),
-        ['select']=love.audio.newSource('sounds/select.wav','static')
+        ['select']=love.audio.newSource('sounds/select.wav','static'),
+        ['music_track1']=love.audio.newSource('sounds/track1.flac','static'),
+        ['music_track2']=love.audio.newSource('sounds/track2.flac','static'),
+        ['music_track3']=love.audio.newSource('sounds/track3.flac','static'),
     }
 
     --initialization
@@ -58,12 +60,12 @@ function love.load()
 
     freeModeSet = 1
 
-    particleSet = 0
+    particleSet = 1
 
     winningPlayer = 0
 
     servingPlayer = math.random(2) == 1 and 1 or 2
-    
+
     paddle1 = Paddle(5, math.random(20,230), 5, 20)
     paddle2 = Paddle(VIRTUAL_WIDTH - 10, math.random(20,230), 5, 20)
     ball = Ball(VIRTUAL_WIDTH / 2 - 2, VIRTUAL_HEIGHT / 2 - 2, 5, 5)
@@ -78,6 +80,17 @@ function love.load()
     else
         ball.dx = -100
     end
+
+    loadMusicMenu()
+
+    crtShader = love.graphics.newShader('crt.glsl')
+    
+    -- 2. 发送分辨率给 Shader (用于计算扫描线密度)
+    -- 注意：这里必须传你的 VIRTUAL 宽高，不是 WINDOW 宽高
+    crtShader:send('inputSize', {VIRTUAL_WIDTH, VIRTUAL_HEIGHT})
+    
+    -- 3. 初始化时间变量
+    shaderTimer = 0
 
     push:setupScreen(
         VIRTUAL_WIDTH,
@@ -114,232 +127,30 @@ function love.update(dt)
     end
 
     --player1 movement
-    if love.keyboard.isDown{'w'} then
-        paddle1.dy = -PADDLE_SPEED
-    elseif love.keyboard.isDown{'s'} then
-        paddle1.dy = PADDLE_SPEED
-    else
-        paddle1.dy = 0
-    end
-
-    --p1 freeMode
-    if freeModeSet == 1 then
-        if love.keyboard.isDown{'a'} then
-            paddle1.dx = -PADDLE_SPEED
-        elseif love.keyboard.isDown{'d'} then
-            paddle1.dx = PADDLE_SPEED
-        else
-            paddle1.dx = 0
-        end
-        
-        if paddle1.x >= VIRTUAL_WIDTH / 3 -paddle1.width then
-            paddle1.x = VIRTUAL_WIDTH / 3 -paddle1.width
-        end
-    end
-
-    --player2 movement
-
-    if playersConfig == 2 then
-        if love.keyboard.isDown{'up'} then
-        paddle2.dy = -PADDLE_SPEED
-        elseif love.keyboard.isDown{'down'} then
-            paddle2.dy = PADDLE_SPEED
-        else
-            paddle2.dy = 0
-        end
-        --p2 freeMode
-        if freeModeSet == 1 then
-            if love.keyboard.isDown{'left'} then
-                paddle2.dx = -PADDLE_SPEED
-            elseif love.keyboard.isDown{'right'} then
-                paddle2.dx = PADDLE_SPEED
-            else
-                paddle2.dx = 0
-            end
-            
-            if paddle2.x <= VIRTUAL_WIDTH / 3 * 2 then
-                paddle2.x = VIRTUAL_WIDTH / 3 * 2
-            end
-        end
-
-    elseif playersConfig == 1 then
-        --AI--
-        if ball.dx > 0 then
-            local diff = ball.y - paddle2.y - paddle2.height / 2
-            paddle2.dy = diff * 10
-        else
-            paddle2.dy = 0
-        end
-
-        local maxSpeed = 180
-        if paddle2.dy > maxSpeed then paddle2.dy = maxSpeed end
-        if paddle2.dy < -maxSpeed then paddle2.dy = -maxSpeed end
-    end
+    playerMovement()
 
     --score
-    if gameState == "play" then
-        ball:update(dt)
-        if ball.x < 0 then
-            player2Score = player2Score + 1
-            ball:reset()
-            servingPlayer = 1
-            ball.dx = 100
+    scoreUpdate(dt)
 
-            sounds['score']:play()
-
-            if player2Score == winScore then
-                gameState = 'victory'
-                winningPlayer = 2
-            else
-                gameState = 'serve'
-            end
-        end
-
-        if ball.x > VIRTUAL_WIDTH - 4 then
-            player1Score = player1Score + 1
-            ball:reset()
-            servingPlayer = 2
-            ball.dx = -100
-            gameState = 'serve'
-            sounds['score']:play()
-            if player1Score == winScore then
-                gameState = 'victory'
-                winningPlayer = 1
-            else
-                gameState = 'serve'
-            end
-        end
+    if gameState == 'music_select' then
+        updateMusicMenu(dt)
     end
-    
+
+    shaderTimer = shaderTimer + dt
+    crtShader:send('time', shaderTimer)
 end
 
 
 -- state switch
 function love.keypressed(key)
-    if gameState~='serve' and gameState~='play' and gameState~='victory' then
-        if key == 'right' or key == 'left' or key == 'z' then
-            sounds['select']:stop()
-            sounds['select']:play()
-        end
-    end
 
-    --menu press
-    if gameState == "menu" then
-        if key == "right" then
-            selectedItem = selectedItem + 1
-            if selectedItem > 5 then
-                selectedItem = 1
-            end
-        elseif key == "left" then
-            selectedItem = selectedItem - 1
-            if selectedItem < 1 then
-                selectedItem = 5
-            end
-        elseif key == 'z' then
-            --submenu set
-            local item = menuItems[selectedItem]
-            if item == 'Players' then
-                gameState = 'submenu_players'
-            elseif item == 'Win Score' then
-                gameState = 'submenu_WinScore'
-            elseif item == 'Free Mode' then
-                gameState = 'submenu_FreeMode'
-            elseif item == 'Particles' then
-                gameState = 'submenu_particles'
-            elseif item == 'Music' then
-                -- music
-            end
-        elseif key == 'enter' or key == 'return' then
-            gameState = 'serve'
-        elseif key == "escape" then
-            love.event.quit()
-        end
+    pressAudio(key)
 
-    elseif gameState == 'submenu_players' then
-        --submenu press
-        if key == 'left' then
-            playersConfig = playersConfig - 1
-        elseif key == 'right' then
-            playersConfig = playersConfig + 1
-        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
-            gameState = 'menu'
-        end
-
-        if playersConfig > 2 then
-            playersConfig = 1
-        elseif playersConfig < 1 then
-            playersConfig = 2
-        end
-    elseif gameState == 'submenu_WinScore' then
-        --submenu press
-        if key == 'left' then
-            winScore = winScore - 1
-        elseif key == 'right' then
-            winScore = winScore + 1
-        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
-            gameState = 'menu'
-        end
-        if winScore > 7 then
-            winScore = 1
-        elseif winScore < 1 then
-            winScore = 7
-        end
-    elseif gameState == 'submenu_FreeMode' then
-        --submenu press
-        if key == 'left' then
-            freeModeSet = freeModeSet - 1
-        elseif key == 'right' then
-            freeModeSet = freeModeSet + 1
-        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
-            gameState = 'menu'
-        end
-        if freeModeSet > 1 then
-            freeModeSet = 0
-        elseif freeModeSet < 0 then
-            freeModeSet = 1
-        end
-    elseif gameState == 'submenu_particles' then
-        --submenu press
-        if key == 'left' then
-            particleSet = particleSet - 1
-        elseif key == 'right' then
-            particleSet = particleSet + 1
-        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
-            gameState = 'menu'
-        end
-        if particleSet > 1 then
-            particleSet = 0
-        elseif particleSet < 0 then
-            particleSet = 1
-        end
-    elseif gameState == 'serve' then
-        if key == 'enter' or key == 'return' then
-            gameState = 'play'
-            combo = 0
-        elseif key == "escape" then
-            gameState = 'menu'
-            player1Score = 0
-            player2Score = 0
-            combo = 0
-        end
-    elseif gameState == 'play' then
-        if key == "escape" then
-            gameState = 'menu'
-        end
-    elseif gameState == 'victory' then
-        if key == 'enter' or key == 'return' then
-            gameState = 'play'
-            player1Score = 0
-            player2Score = 0
-            combo = 0
-        elseif key == "escape" then
-            gameState = 'menu'
-        end
-    end
+    menuPress(key)
 end
 
 function love.draw()
-    push:apply("start")
+    push:start()
 
     love.graphics.clear(40/255, 45/255, 52/255, 1)
 
@@ -353,18 +164,18 @@ function love.draw()
         drawFreeMode()
     elseif gameState == 'submenu_particles' then
         drawParticleSet()
+    elseif gameState == 'music_select' then
+        drawMusicMenu()
     elseif gameState == 'play' or gameState == 'serve' or gameState == 'victory' then
         drawGame()
     end
 
-    --displayFPS()
-
-    push:apply("end")
+    push:finish(crtShader)
 end
 
 function ballCollision()
 
-    handleCollision(ball, paddle1)
+    handleCollision(ball, paddle1) -- compare x and y collision
     handleCollision(ball, paddle2)
 
     if ball.y <= 0 then
@@ -381,7 +192,7 @@ function ballCollision()
         sounds['wall_hit']:play()
     end
 
-    local ballMaxSpeed = 800
+    local ballMaxSpeed = 900
     if ball.dx > ballMaxSpeed then
         ball.dx = ballMaxSpeed
     elseif ball.dx < -ballMaxSpeed then
@@ -429,13 +240,6 @@ function handleCollision(ball, paddle)
             end
         end
     end
-end
-
-function displayFPS()
-    love.graphics.setColor(1,1,1,1)
-    love.graphics.setFont(smallFont)
-    love.graphics.print('FPS: '..tostring(love.timer.getFPS()),40,20)
-    love.graphics.setColor(1,1,1,1)
 end
 
 function drawMenuOptions()
@@ -590,4 +394,387 @@ function drawParticleSet()
     love.graphics.setColor(1, 1, 1, 0.8)
     love.graphics.setFont(smallFont)
     love.graphics.printf("< Use <- -> to adjust and Z to confirm >", 0, VIRTUAL_HEIGHT - 40, VIRTUAL_WIDTH, "center")
+end
+
+function lerp(a, b, t)
+    return a + (b - a) * t
+end
+
+-- 专辑数据初始化
+function loadMusicMenu()
+    musicMenu = {
+        selection = 1, -- 当前选第几个
+        timer = 0,     -- 用于计算浮动的时间
+        spacing = 110, -- 两个专辑之间的间距 (像素)
+        
+        -- 这里定义你的专辑列表
+        items = {
+            {
+                name = "Stupid Bird",
+                cover = love.graphics.newImage('sprites/cover1.png'), -- 替换你的图片路径
+                music = sounds['music_track1'], -- 替换你的音乐变量
+                -- 下面是用于动画的动态变量
+                x = VIRTUAL_WIDTH / 2,
+                y = VIRTUAL_HEIGHT / 2,
+                scale = 1,
+                alpha = 1
+            },
+            {
+                name = "Stupid Bird",
+                cover = love.graphics.newImage('sprites/cover2.png'),
+                music = sounds['music_track2'],
+                x = VIRTUAL_WIDTH / 2 + 110, -- 初始位置稍微错开一点
+                y = VIRTUAL_HEIGHT / 2,
+                scale = 0.8,
+                alpha = 0.5
+            },
+            {
+                name = "Stupid Bird",
+                cover = love.graphics.newImage('sprites/cover3.png'),
+                music = sounds['music_track3'],
+                x = VIRTUAL_WIDTH / 2 + 220,
+                y = VIRTUAL_HEIGHT / 2,
+                scale = 0.8,
+                alpha = 0.5
+            }
+        }
+    }
+
+    -- 播放默认第一首
+    playSelectedMusic()
+end
+
+function playSelectedMusic()
+    -- 先停止所有音乐（或者停止上一首）
+    for _, item in ipairs(musicMenu.items) do
+        item.music:stop()
+    end
+    -- 播放选中的
+    local current = musicMenu.items[musicMenu.selection]
+    current.music:setLooping(true)
+    current.music:play()
+end
+
+function updateMusicMenu(dt)
+    local menu = musicMenu
+    menu.timer = menu.timer + dt * 2 -- 控制浮动速度
+
+    for i, item in ipairs(menu.items) do
+        -- 1. 计算目标位置
+        -- spacing 设为 110 (因为没有倾斜了，宽一点好看)
+        local targetX = VIRTUAL_WIDTH / 2 + (i - menu.selection) * 110
+        
+        -- 2. 平滑移动 (Lerp X)
+        item.x = lerp(item.x, targetX, 10 * dt)
+        
+        -- 3. 上下浮动 (Sine Wave Y)
+        local baseY = VIRTUAL_HEIGHT / 2 
+        -- i * 0.8 是相位差，让它们像波浪一样起伏，而不是一起动
+        local floatOffset = math.sin(menu.timer + i * 0.8) * 5 
+        item.y = baseY + floatOffset
+
+        -- 4. 缩放和亮度目标
+        local targetScale = 0.8 -- 没选中的大小
+        local targetAlpha = 0.4 -- 没选中的亮度 (灰色)
+        
+        if i == menu.selection then
+            targetScale = 1.2 -- 选中的放大 (1.2倍)
+            targetAlpha = 1.0 -- 选中的全亮
+        end
+        
+        -- 5. 平滑应用缩放和亮度
+        item.scale = lerp(item.scale, targetScale, 10 * dt)
+        item.alpha = lerp(item.alpha, targetAlpha, 10 * dt)
+    end
+end
+
+function musicMenuKeyPressed(key)
+    if key == 'left' or key == 'a' then
+        if musicMenu.selection > 1 then
+            musicMenu.selection = musicMenu.selection - 1
+            sounds['select']:play() -- 播放音效
+            playSelectedMusic()
+        end
+    elseif key == 'right' or key == 'd' then
+        if musicMenu.selection < #musicMenu.items then
+            musicMenu.selection = musicMenu.selection + 1
+            sounds['select']:play()
+            playSelectedMusic()
+        end
+    elseif key == 'return' or key == 'z' then
+        -- 确认选择，进入游戏
+        gameState = 'menu' -- 或你定义的其他状态
+    end
+end
+
+function drawMusicMenu()
+    -- 背景色：迈阿密风格通常偏深色，比如深紫/深蓝，让封面弹出来
+    love.graphics.clear(20/255, 20/255, 30/255, 1) 
+
+    local menu = musicMenu
+
+    for i, item in ipairs(menu.items) do
+        -- 1. 设置透明度：根据 item.alpha (在update里计算好的)
+        love.graphics.setColor(item.alpha, item.alpha, item.alpha, 1)
+
+        -- 2. 设置原点为图片中心 (假设你已经把图片处理成 80x80 了)
+        -- 如果没处理好，可以用 item.cover:getWidth()/2
+        local ox = item.cover:getWidth() / 2
+        local oy = item.cover:getHeight() / 2
+        
+        -- 3. 绘制图片 (没有倾斜参数)
+        love.graphics.draw(
+            item.cover, 
+            item.x, 
+            item.y, 
+            0,          -- 旋转角度 (0表示正立)
+            item.scale, -- X轴缩放
+            item.scale, -- Y轴缩放
+            ox, oy      -- 原点
+        )
+        
+        -- 4. 绘制标题 (只有选中的显示)
+        if i == menu.selection then
+             love.graphics.setColor(1, 1, 1, 1) -- 字体纯白
+             -- 字体位置：在专辑下方 50 像素处
+             love.graphics.printf(item.name, 0, item.y + 50, VIRTUAL_WIDTH, 'center')
+        end
+    end
+    
+    -- 重置颜色
+    love.graphics.setColor(1, 1, 1, 1)
+    
+    -- 简单的操作提示
+    love.graphics.setFont(smallFont) -- 记得确保你定义了字体，没有就删掉这行
+    love.graphics.printf("SELECT ALBUM", 0, 20, VIRTUAL_WIDTH, 'center')
+end
+
+function playerMovement()
+    if love.keyboard.isDown{'w'} then
+        paddle1.dy = -PADDLE_SPEED
+    elseif love.keyboard.isDown{'s'} then
+        paddle1.dy = PADDLE_SPEED
+    else
+        paddle1.dy = 0
+    end
+
+    --p1 freeMode
+    if freeModeSet == 1 then
+        if love.keyboard.isDown{'a'} then
+            paddle1.dx = -PADDLE_SPEED
+        elseif love.keyboard.isDown{'d'} then
+            paddle1.dx = PADDLE_SPEED
+        else
+            paddle1.dx = 0
+        end
+        
+        if paddle1.x >= VIRTUAL_WIDTH / 3 -paddle1.width then
+            paddle1.x = VIRTUAL_WIDTH / 3 -paddle1.width
+        end
+    end
+
+    --player2 movement
+
+    if playersConfig == 2 then
+        if love.keyboard.isDown{'up'} then
+        paddle2.dy = -PADDLE_SPEED
+        elseif love.keyboard.isDown{'down'} then
+            paddle2.dy = PADDLE_SPEED
+        else
+            paddle2.dy = 0
+        end
+        --p2 freeMode
+        if freeModeSet == 1 then
+            if love.keyboard.isDown{'left'} then
+                paddle2.dx = -PADDLE_SPEED
+            elseif love.keyboard.isDown{'right'} then
+                paddle2.dx = PADDLE_SPEED
+            else
+                paddle2.dx = 0
+            end
+            
+            if paddle2.x <= VIRTUAL_WIDTH / 3 * 2 then
+                paddle2.x = VIRTUAL_WIDTH / 3 * 2
+            end
+        end
+
+    elseif playersConfig == 1 then
+        --AI--
+        if ball.dx > 0 then
+            local diff = ball.y - paddle2.y - paddle2.height / 2
+            paddle2.dy = diff * 10
+        else
+            paddle2.dy = 0
+        end
+
+        local maxSpeed = 180
+        if paddle2.dy > maxSpeed then paddle2.dy = maxSpeed end
+        if paddle2.dy < -maxSpeed then paddle2.dy = -maxSpeed end
+    end
+end
+
+function scoreUpdate(dt)
+    if gameState == "play" then
+        ball:update(dt)
+        if ball.x < 0 then
+            player2Score = player2Score + 1
+            ball:reset()
+            servingPlayer = 1
+            ball.dx = 100
+
+            sounds['score']:play()
+
+            if player2Score == winScore then
+                gameState = 'victory'
+                winningPlayer = 2
+            else
+                gameState = 'serve'
+            end
+        end
+
+        if ball.x > VIRTUAL_WIDTH - 4 then
+            player1Score = player1Score + 1
+            ball:reset()
+            servingPlayer = 2
+            ball.dx = -100
+            gameState = 'serve'
+            sounds['score']:play()
+            if player1Score == winScore then
+                gameState = 'victory'
+                winningPlayer = 1
+            else
+                gameState = 'serve'
+            end
+        end
+    end
+end
+
+function pressAudio(key)
+    if gameState~='serve' and gameState~='play' and gameState~='victory' then
+        if key == 'right' or key == 'left' or key == 'z' then
+            sounds['select']:stop()
+            sounds['select']:play()
+        end
+    end
+end
+
+function menuPress(key)
+    if gameState == "menu" then
+        if key == "right" then
+            selectedItem = selectedItem + 1
+            if selectedItem > 5 then
+                selectedItem = 1
+            end
+        elseif key == "left" then
+            selectedItem = selectedItem - 1
+            if selectedItem < 1 then
+                selectedItem = 5
+            end
+        elseif key == 'z' then
+            --submenu set
+            local item = menuItems[selectedItem]
+            if item == 'Players' then
+                gameState = 'submenu_players'
+            elseif item == 'Win Score' then
+                gameState = 'submenu_WinScore'
+            elseif item == 'Free Mode' then
+                gameState = 'submenu_FreeMode'
+            elseif item == 'Particles' then
+                gameState = 'submenu_particles'
+            elseif item == 'Music' then
+                gameState = 'music_select'
+            end
+        elseif key == 'enter' or key == 'return' then
+            gameState = 'serve'
+        elseif key == "escape" then
+            love.event.quit()
+        end
+
+    elseif gameState == 'submenu_players' then
+        --submenu press
+        if key == 'left' then
+            playersConfig = playersConfig - 1
+        elseif key == 'right' then
+            playersConfig = playersConfig + 1
+        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
+            gameState = 'menu'
+        end
+
+        if playersConfig > 2 then
+            playersConfig = 1
+        elseif playersConfig < 1 then
+            playersConfig = 2
+        end
+    elseif gameState == 'submenu_WinScore' then
+        --submenu press
+        if key == 'left' then
+            winScore = winScore - 1
+        elseif key == 'right' then
+            winScore = winScore + 1
+        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
+            gameState = 'menu'
+        end
+        if winScore > 7 then
+            winScore = 1
+        elseif winScore < 1 then
+            winScore = 7
+        end
+    elseif gameState == 'submenu_FreeMode' then
+        --submenu press
+        if key == 'left' then
+            freeModeSet = freeModeSet - 1
+        elseif key == 'right' then
+            freeModeSet = freeModeSet + 1
+        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
+            gameState = 'menu'
+        end
+        if freeModeSet > 1 then
+            freeModeSet = 0
+        elseif freeModeSet < 0 then
+            freeModeSet = 1
+        end
+    elseif gameState == 'submenu_particles' then
+        --submenu press
+        if key == 'left' then
+            particleSet = particleSet - 1
+        elseif key == 'right' then
+            particleSet = particleSet + 1
+        elseif key == 'z' or key == 'enter' or key == 'return' or key == 'escape' then
+            gameState = 'menu'
+        end
+        if particleSet > 1 then
+            particleSet = 0
+        elseif particleSet < 0 then
+            particleSet = 1
+        end
+    elseif gameState == 'music_select' then
+        musicMenuKeyPressed(key)
+    elseif gameState == 'serve' then
+        if key == 'enter' or key == 'return' then
+            gameState = 'play'
+            combo = 0
+        elseif key == "escape" then
+            gameState = 'menu'
+            player1Score = 0
+            player2Score = 0
+            combo = 0
+        end
+    elseif gameState == 'play' then
+        if key == "escape" then
+            gameState = 'menu'
+            ball:reset()
+            player1Score = 0
+            player2Score = 0
+            combo = 0
+        end
+    elseif gameState == 'victory' then
+        if key == 'enter' or key == 'return' then
+            gameState = 'play'
+            player1Score = 0
+            player2Score = 0
+            combo = 0
+        elseif key == "escape" then
+            gameState = 'menu'
+        end
+    end
 end
